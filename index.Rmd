@@ -1,0 +1,273 @@
+---
+title: "Creating a React, Highcharts, htmlwidget in R - using packer and highcharter"
+date: "Updated Last: `r Sys.Date()`"
+output:
+  rmdformats::downcute:
+    self_contained: true
+    default_style: "light"
+    downcute_theme: "chaos"
+    thumbnails: false
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,eval = FALSE,messages = FALSE)
+
+library(tidyverse)
+library(highcharter)
+```
+
+# what-we-dev
+
+Today we are going to build a `React.js`, `Highcharts.js`, `htmlwidget.R` using `packer` & `highcharter`.
+
+```{r,eval = TRUE,echo=FALSE}
+
+
+hc <- economics_long %>%
+  mutate(date = datetime_to_timestamp(date)) %>%
+  hchart("area", hcaes(date, value01, group = variable)) %>%
+  hc_xAxis(type = "datetime") %>%
+  hc_plotOptions(area = list(stacking = "normal")) %>%
+  hc_legend(layout = "proximate", align = "right", labelFormatter = JS("function () {
+           ydat = this.yData;
+            return this.name + ' ' + ydat[ydat.length-1].toFixed(2); 
+        }"))
+
+
+react.highcharts::reactHC(
+ options = hc$x$hc_opts
+)
+
+```
+
+# create-pkg
+
+We start by creating a package.
+
+```{r}
+usethis::create_package("~/r_projects/react.highcharts")
+
+```
+
+# init-widget
+
+Once our package loads, we initialize a widget via packer.
+
+```{r}
+packer::scaffold_widget("reactHC")
+```
+
+# npm-install
+
+Install React
+
+-   add react & babel
+-   add highcharts react
+
+```{r}
+
+packer:::apply_react(FALSE)
+packer::npm_install("highcharts-react-official",scope = "prod")
+
+```
+
+# react-hc
+
+Our first goal is to get to a reprex (reproducible example) `we can always improve it`.
+
+We add in the example react-highcharts code into the widget scaffolding.
+
+```{js}
+import "widgets";
+import React from "react";
+import { render } from "react-dom";
+import Highcharts from "highcharts";
+import HighchartsReact from "highcharts-react-official";
+
+HTMLWidgets.widget({
+  name: "reactHC",
+  type: "output",
+  factory: function (el, width, height) {
+
+    return {
+      renderValue: function (x) {
+        const App = () => (
+          <div>
+            <HighchartsReact highcharts={Highcharts} />
+          </div>
+        );
+
+        render(<App />, document.getElementById(el.id));
+      },
+
+    };
+  }
+});
+
+
+```
+
+# bundle-webpack
+
+-   Bundle the Widget
+
+-   document & install the R pkg
+
+```{r}
+
+packer::bundle()
+# ✓ Bundled 
+devtools::document()
+devtools::install()
+
+```
+
+# Hooray! Our React plot works!
+
+```{r}
+react.highcharts::reactHC()
+
+```
+
+# ![Highcharts React htmlwidget](images/Screen%20Shot%202022-11-25%20at%203.48.12%20PM.png)improving-it-a-bit
+
+## example-data
+
+For this we will use the `ggplot2` data set economics.
+
+```{r,eval = TRUE}
+head(ggplot2::economics)
+```
+
+## highcharter
+
+Within the existing R implementation - `highcharter`, we can create a quick chart with a javascript legend placement, like the below:
+
+```{r,eval=TRUE}
+library(tidyverse)
+library(highcharter)
+
+hc <- economics_long %>%
+  mutate(date = datetime_to_timestamp(date)) %>%
+  hchart("area", hcaes(date, value01, group = variable)) %>%
+  hc_xAxis(type = "datetime") %>%
+  hc_plotOptions(area = list(stacking = "normal")) %>%
+  hc_legend(layout = "proximate", align = "right", labelFormatter = JS("function () {
+           ydat = this.yData;
+            return this.name + ' ' + ydat[ydat.length-1].toFixed(2); 
+        }"))
+
+hc
+```
+
+## opts-export
+
+we can then export the options into `JSON` directly via the R object, or alternatively export the `javascript`
+
+```{r,eval=TRUE}
+
+listviewer::jsonedit(
+  hc$x$hc_opts
+)
+
+
+
+# export JS options
+
+usethis::use_directory("trash")
+highcharter::export_hc(hc,filename = "trash/example-export.js")
+
+```
+
+## jsx-mod
+
+We modify our `reactHC.jsx` file to accept the options
+
+```{js,eval = FALSE}
+renderValue: function (x) {
+  const options = x.options;
+  ...
+  <HighchartsReact 
+  highcharts={Highcharts} 
+  options={options}/>
+  ...  
+  }
+```
+
+## R-mod
+
+& modify our R function to pass these options to `react` & `javascript`
+
+```{r}
+
+reactHC <- function(options = NULL, width = NULL, height = NULL, elementId = NULL) {
+
+  # forward options using x
+  x = list(
+    options = options
+  )
+
+  # create widget
+  htmlwidgets::createWidget(
+    name = 'reactHC',
+    x,
+    width = width,
+    height = height,
+    package = 'react.highcharts',
+    elementId = elementId
+  )
+}
+
+
+```
+
+# webpack-bundle
+
+We then repeat the webpack (& R) bundle, document, install process
+
+```{r}
+packer::bundle()
+devtools::document()
+devtools::install()
+
+
+```
+
+## test-viola
+
+Test & ... Viola!
+
+We now have a React & Highcharts htmlwidget that we can use in R, Shiny, rmarkdown, quarto docs or anywhere you use R (or generally any of the other `64` languages - I'm certain I'm short on the count) that posit supports :) )
+
+**Open Q:** I do wonder, is there a way for htmlwidgets to interoperate with JS? Can a `npm` package use a `npmR` package? `If you know, would you PM me?`
+
+```{r,eval=TRUE}
+
+react.highcharts::reactHC(
+ options = hc$x$hc_opts
+)
+
+```
+
+While I plan to explore this further, that's all for now!
+
+The source code can be found <a href = "https://github.com/zac-garland/react.highcharts" target="_blank"> Here </a>
+
+```{css,eval=TRUE}
+.jsoneditor.jsoneditor-mode-tree{
+  background: #ffffff;
+}
+
+```
+
+```{js,eval=TRUE}
+
+$(function(){
+  $("#toc-highcharts-react-htmlwidgetimproving-it-a-bit > img").remove();
+})
+
+
+
+```

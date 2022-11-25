@@ -12,3 +12,5 @@ Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.1.2
 Imports: 
     htmlwidgets
+URL: https://github.com/zac-garland/react.highcharts
+BugReports: https://github.com/zac-garland/react.highcharts/issues
